@@ -34,37 +34,37 @@
 */
 #ifdef ENCRYPTION
 #ifdef CHACHA20
-#include "crypto/chacha20.h"
+#include "chacha20.h"
 #endif
 #ifdef TRIVIUM
-#include "crypto/trivium.h"
+#include "trivium.h"
 #endif
 #ifdef RABBIT
-#include "crypto/rabbit.h"
+#include "rabbit.h"
 #endif
 #ifdef SIMON6496
-#include "crypto/simon6496.h"
+#include "simon6496.h"
 #endif
 #ifdef SIMON64128
-#include "crypto/simon64128.h"
+#include "simon64128.h"
 #endif
 #ifdef SIMON128128
-#include "crypto/simon128128.h"
+#include "simon128128.h"
 #endif
 #ifdef SIMON128192
-#include "crypto/simon128192.h"
+#include "simon128192.h"
 #endif
 #ifdef SPECK6496
-#include "crypto/speck6496.h"
+#include "speck6496.h"
 #endif
 #ifdef SPECK64128
-#include "crypto/speck64128.h"
+#include "speck64128.h"
 #endif
 #ifdef SPECK128128
-#include "crypto/speck128128.h"
+#include "speck128128.h"
 #endif
 #ifdef SPECK128192
-#include "crypto/speck128192.h"
+#include "speck128192.h"
 #endif
 #endif
 
