@@ -5,7 +5,6 @@
 #include "mavlink_types.h"
 #include "mavlink_conversions.h"
 #include <stdio.h>
-
 #ifndef MAVLINK_HELPER
 #define MAVLINK_HELPER
 #endif
@@ -16,65 +15,27 @@
 
 #define ENCRYPTION
 
-//#define CHACHA20
-//#define TRIVIUM
+/*
+*include Crypto
+*/
+#ifdef ENCRYPTION
+#include "light_crypto.h"
+#define CHACHA20
 //#define RABBIT
+//#define TRIVIUM
 //#define SIMON6496
 //#define SIMON64128
 //#define SIMON128128
 //#define SIMON128192
-#define SIMON128256
+//#define SIMON128256
 //#define SPECK6496
 //#define SPECK64128
 //#define SPECK128128
 //#define SPECK128192
 //#define SPECK128256
+#endif
 
 #include "mavlink_sha256.h"
-/*
-*include Crypto
-*/
-#ifdef ENCRYPTION
-#ifdef CHACHA20
-#include "chacha20.h"
-#endif
-#ifdef TRIVIUM
-#include "trivium.h"
-#endif
-#ifdef RABBIT
-#include "rabbit.h"
-#endif
-#ifdef SIMON6496
-#include "simon6496.h"
-#endif
-#ifdef SIMON64128
-#include "simon64128.h"
-#endif
-#ifdef SIMON128128
-#include "simon128128.h"
-#endif
-#ifdef SIMON128192
-#include "simon128192.h"
-#endif
-#ifdef SIMON128256
-#include "simon128256.h"
-#endif
-#ifdef SPECK6496
-#include "speck6496.h"
-#endif
-#ifdef SPECK64128
-#include "speck64128.h"
-#endif
-#ifdef SPECK128128
-#include "speck128128.h"
-#endif
-#ifdef SPECK128192
-#include "speck128192.h"
-#endif
-#ifdef SPECK128256
-#include "speck128256.h"
-#endif
-#endif
 
 #ifdef MAVLINK_USE_CXX_NAMESPACE
 namespace mavlink
@@ -530,6 +491,45 @@ MAVLINK_HELPER void _mav_finalize_message_chan_send(mavlink_channel_t chan, uint
 	bool mavlink1 = (status->flags & MAVLINK_STATUS_FLAG_OUT_MAVLINK1) != 0;
 	bool signing = (!mavlink1) && status->signing && (status->signing->flags & MAVLINK_SIGNING_FLAG_SIGN_OUTGOING);
 
+	//unsigned char out[16];
+	/**
+	unsigned char sharedKey[] = {0x00, 0x01, 0x02, 0x03,
+								 0x04, 0x05, 0x06, 0x07,
+								 0x08, 0x09, 0x0a, 0x0b,
+								 0x0c, 0x0d, 0x0e, 0x0f,
+								 0x10, 0x11, 0x12, 0x13,
+								 0x14, 0x15, 0x16, 0x17,
+								 0x18, 0x19, 0x1a, 0x1b,
+								 0x1c, 0x1d, 0x1e, 0x1f};
+
+	//PKCS5_PBKDF2_HMAC((const char *)sharedKey, 32, NULL, 0, 1000, EVP_sha1(), 16, out);
+	//hex_print(out, 0, 16);
+
+	unsigned char secretKey[32], publicKey[32];
+
+	printf("A: Generazione coppia di chiavi\n");
+	CompressedKeyGeneration(secretKey, publicKey);
+
+	hex_print((uint8_t *)secretKey, 0, 32);
+	hex_print((uint8_t *)publicKey, 0, 32);
+
+	unsigned char secretKey2[32], publicKey2[32], sharedKey2[32];
+
+	printf("B: Generazione coppia di chiavi\n");
+
+	CompressedKeyGeneration(secretKey2, publicKey2);
+
+	hex_print((uint8_t *)secretKey2, 0, 32);
+	hex_print((uint8_t *)publicKey2, 0, 32);
+
+	printf("B: Shared key\n");
+	CompressedSecretAgreement(secretKey2, publicKey, sharedKey2);
+	hex_print((uint8_t *)sharedKey2, 0, 32);
+
+	printf("A: Shared key\n");
+	CompressedSecretAgreement(secretKey, publicKey2, sharedKey);
+	hex_print((uint8_t *)sharedKey, 0, 32);
+**/
 	if (mavlink1)
 	{
 		length = min_length;
@@ -1536,7 +1536,6 @@ MAVLINK_HELPER unsigned int mavlink_get_proto_version(uint8_t chan)
 MAVLINK_HELPER uint8_t mavlink_parse_char(uint8_t chan, uint8_t c, mavlink_message_t *r_message, mavlink_status_t *r_mavlink_status)
 {
 	uint8_t msg_received = mavlink_frame_char(chan, c, r_message, r_mavlink_status);
-	//hex_print((uint8_t *)_MAV_PAYLOAD(r_message), 0, r_message->len);
 	if (msg_received == MAVLINK_FRAMING_BAD_CRC ||
 		msg_received == MAVLINK_FRAMING_BAD_SIGNATURE)
 	{
