@@ -11,6 +11,98 @@
 #include "utils.h"
 
 /***************************************************************************
+ *                              SPECK128192                                *
+ ***************************************************************************/
+void inline Speck128192KeySchedule(uint64_t K[], uint64_t rk[])
+{
+    uint64_t i, C = K[2], B = K[1], A = K[0];
+    for (i = 0; i < 32;)
+    {
+        rk[i] = A;
+        ER64(B, A, i++);
+        rk[i] = A;
+        ER64(C, A, i++);
+    }
+    rk[i] = A;
+}
+void inline Speck128192Encrypt(uint64_t Pt[], uint64_t Ct[], uint64_t rk[])
+{
+    uint64_t i;
+    Ct[0] = Pt[0];
+    Ct[1] = Pt[1];
+    for (i = 0; i < 33;)
+        ER64(Ct[1], Ct[0], rk[i++]);
+}
+
+/**
+ * For every block:
+ * 1. Concat/xor/add nonce  with counter (random nonce)
+ * 2. Encrypt nonce
+ * 3. XOR between encrypted nonce and plain
+ * 4. Increment counter
+ */
+MAVLINK_HELPER void Speck128192(uint8_t *nonce, uint8_t *key, uint8_t *plaintext, int length)
+{
+    const int BLOCK_SIZE = 16;
+    const int KEY_LEN = 24;
+    const int KEY = 3;
+    const int KEY_ROUND = 33;
+
+    uint64_t K[KEY];
+    uint64_t rk[KEY_ROUND];
+
+    BytesToWords64(key, K, KEY_LEN);
+    Speck128192KeySchedule(K, rk);
+
+    int block = 0;
+    int last_block;
+    uint8_t counter[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    uint64_t Pt[2];
+    uint64_t Ct[2];
+    uint8_t workingNonce[BLOCK_SIZE];
+    uint8_t ct[BLOCK_SIZE];
+
+    last_block = length - BLOCK_SIZE;
+
+    if (length > BLOCK_SIZE)
+    {
+        for (block = 0; block < last_block; block += BLOCK_SIZE)
+        {
+            //STEP 1
+            memcpy(workingNonce, nonce, BLOCK_SIZE);
+            xored(counter, workingNonce, BLOCK_SIZE);
+
+            BytesToWords64(workingNonce, Pt, BLOCK_SIZE);
+            Speck128192Encrypt(Pt, Ct, rk);
+            Words64ToBytes(Ct, ct, 2);
+
+            //STEP3
+            xored(ct, &plaintext[block], BLOCK_SIZE);
+
+            //STEP 4
+            uint8_t count[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+            byteAdd(counter, BLOCK_SIZE, count);
+        }
+    }
+
+    /*******************************last block**********************************/
+
+    //STEP 1
+    memcpy(workingNonce, nonce, BLOCK_SIZE);
+    xored(counter, workingNonce, BLOCK_SIZE);
+
+    //STEP 2
+
+    BytesToWords64(workingNonce, Pt, BLOCK_SIZE);
+    Speck128192Encrypt(Pt, Ct, rk);
+    Words64ToBytes(Ct, ct, 2);
+
+    //STEP3
+    xored(ct, &plaintext[block], length - block);
+}
+
+#ifdef TEST
+/***************************************************************************
  *                              CHACHA20                                   *
  * *************************************************************************/
 static inline void u32t8le(uint32_t v, uint8_t p[4])
@@ -1307,96 +1399,7 @@ MAVLINK_HELPER void Speck128128(uint8_t *nonce, uint8_t *key, uint8_t *plaintext
     //STEP3
     xored(ct, &plaintext[block], length - block);
 }
-/***************************************************************************
- *                              SPECK128192                                *
- ***************************************************************************/
-void inline Speck128192KeySchedule(uint64_t K[], uint64_t rk[])
-{
-    uint64_t i, C = K[2], B = K[1], A = K[0];
-    for (i = 0; i < 32;)
-    {
-        rk[i] = A;
-        ER64(B, A, i++);
-        rk[i] = A;
-        ER64(C, A, i++);
-    }
-    rk[i] = A;
-}
-void inline Speck128192Encrypt(uint64_t Pt[], uint64_t Ct[], uint64_t rk[])
-{
-    uint64_t i;
-    Ct[0] = Pt[0];
-    Ct[1] = Pt[1];
-    for (i = 0; i < 33;)
-        ER64(Ct[1], Ct[0], rk[i++]);
-}
 
-/**
- * For every block:
- * 1. Concat/xor/add nonce  with counter (random nonce)
- * 2. Encrypt nonce
- * 3. XOR between encrypted nonce and plain
- * 4. Increment counter
- */
-MAVLINK_HELPER void Speck128192(uint8_t *nonce, uint8_t *key, uint8_t *plaintext, int length)
-{
-    const int BLOCK_SIZE = 16;
-    const int KEY_LEN = 24;
-    const int KEY = 3;
-    const int KEY_ROUND = 33;
-
-    uint64_t K[KEY];
-    uint64_t rk[KEY_ROUND];
-
-    BytesToWords64(key, K, KEY_LEN);
-    Speck128192KeySchedule(K, rk);
-
-    int block = 0;
-    int last_block;
-    uint8_t counter[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-    uint64_t Pt[2];
-    uint64_t Ct[2];
-    uint8_t workingNonce[BLOCK_SIZE];
-    uint8_t ct[BLOCK_SIZE];
-
-    last_block = length - BLOCK_SIZE;
-
-    if (length > BLOCK_SIZE)
-    {
-        for (block = 0; block < last_block; block += BLOCK_SIZE)
-        {
-            //STEP 1
-            memcpy(workingNonce, nonce, BLOCK_SIZE);
-            xored(counter, workingNonce, BLOCK_SIZE);
-
-            BytesToWords64(workingNonce, Pt, BLOCK_SIZE);
-            Speck128192Encrypt(Pt, Ct, rk);
-            Words64ToBytes(Ct, ct, 2);
-
-            //STEP3
-            xored(ct, &plaintext[block], BLOCK_SIZE);
-
-            //STEP 4
-            uint8_t count[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
-            byteAdd(counter, BLOCK_SIZE, count);
-        }
-    }
-
-    /*******************************last block**********************************/
-
-    //STEP 1
-    memcpy(workingNonce, nonce, BLOCK_SIZE);
-    xored(counter, workingNonce, BLOCK_SIZE);
-
-    //STEP 2
-
-    BytesToWords64(workingNonce, Pt, BLOCK_SIZE);
-    Speck128192Encrypt(Pt, Ct, rk);
-    Words64ToBytes(Ct, ct, 2);
-
-    //STEP3
-    xored(ct, &plaintext[block], length - block);
-}
 /***************************************************************************
  *                              SPECK128256                                *
  ***************************************************************************/
@@ -1493,5 +1496,4 @@ MAVLINK_HELPER void Speck128256(uint8_t *nonce, uint8_t *key, uint8_t *plaintext
     //STEP3
     xored(ct, &plaintext[block], length - block);
 }
-
 #endif
