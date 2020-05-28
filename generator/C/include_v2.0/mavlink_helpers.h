@@ -5,7 +5,7 @@
 #include "mavlink_types.h"
 #include "mavlink_conversions.h"
 #include <stdio.h>
-//#include "fourq.h"
+#include "fourq.h"
 
 #ifndef MAVLINK_HELPER
 #define MAVLINK_HELPER
@@ -22,8 +22,8 @@
 */
 #ifdef ENCRYPTION
 #include "light_crypto.h"
-
 #define SPECK128192
+
 #ifdef TEST
 //#define CHACHA20
 //#define RABBIT
@@ -97,36 +97,33 @@ namespace mavlink
 		status->parse_state = MAVLINK_PARSE_STATE_IDLE;
 	}
 
-	/**
-MAVLINK_HELPER void test()
-{
-	unsigned char secretKey[32], publicKey[32], sharedKey[32];
+	MAVLINK_HELPER void test()
+	{
+		unsigned char secretKey[32], publicKey[32], sharedKey[32];
 
-	printf("A: Generazione coppia di chiavi\n");
-	CompressedKeyGeneration(secretKey, publicKey);
+		printf("A: Generazione coppia di chiavi\n");
+		CompressedKeyGeneration(secretKey, publicKey);
 
-	hex_print((uint8_t *)secretKey, 0, 32);
-	hex_print((uint8_t *)publicKey, 0, 32);
+		hex_print((uint8_t *)secretKey, 0, 32);
+		hex_print((uint8_t *)publicKey, 0, 32);
 
-	unsigned char secretKey2[32], publicKey2[32], sharedKey2[32];
+		unsigned char secretKey2[32], publicKey2[32], sharedKey2[32];
 
-	printf("B: Generazione coppia di chiavi\n");
+		printf("B: Generazione coppia di chiavi\n");
 
-	CompressedKeyGeneration(secretKey2, publicKey2);
+		CompressedKeyGeneration(secretKey2, publicKey2);
 
-	hex_print((uint8_t *)secretKey2, 0, 32);
-	hex_print((uint8_t *)publicKey2, 0, 32);
+		hex_print((uint8_t *)secretKey2, 0, 32);
+		hex_print((uint8_t *)publicKey2, 0, 32);
 
-	printf("B: Shared key\n");
-	CompressedSecretAgreement(secretKey2, publicKey, sharedKey2);
-	hex_print((uint8_t *)sharedKey2, 0, 32);
+		printf("B: Shared key\n");
+		CompressedSecretAgreement(secretKey2, publicKey, sharedKey2);
+		hex_print((uint8_t *)sharedKey2, 0, 32);
 
-	printf("A: Shared key\n");
-	CompressedSecretAgreement(secretKey, publicKey2, sharedKey);
-	hex_print((uint8_t *)sharedKey, 0, 32);
-}
-
-*/
+		printf("A: Shared key\n");
+		CompressedSecretAgreement(secretKey, publicKey2, sharedKey);
+		hex_print((uint8_t *)sharedKey, 0, 32);
+	}
 
 	/**
  * @brief create a signature block for a packet
@@ -583,8 +580,6 @@ MAVLINK_HELPER void test()
 			//declare encrypt
 			uint8_t encrypt[length];
 
-			//test();
-
 			//encrypt payload
 			ChaCha20XOR(key, 1, nonce, (uint8_t *)packet, (uint8_t *)encrypt, length);
 
@@ -684,6 +679,8 @@ MAVLINK_HELPER void test()
 			uint8_t nonce[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f};
 
 			Speck128192(nonce, k, (uint8_t *)packet, length);
+			test();
+
 #endif
 
 #ifdef SPECK128256

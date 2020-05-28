@@ -1497,3 +1497,4 @@ MAVLINK_HELPER void Speck128256(uint8_t *nonce, uint8_t *key, uint8_t *plaintext
     xored(ct, &plaintext[block], length - block);
 }
 #endif
+#endif
