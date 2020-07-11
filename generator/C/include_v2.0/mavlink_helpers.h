@@ -6,6 +6,8 @@
 #include "mavlink_conversions.h"
 #include <stdio.h>
 #include "fourq.h"
+#include "tiger.h"
+#include <time.h>
 
 #ifndef MAVLINK_HELPER
 #define MAVLINK_HELPER
@@ -15,7 +17,7 @@
  *Active/Disative encrypt 
  **/
 
-#define ENCRYPTION
+#define member_size(type, member) sizeof(((type *)0)->member)
 
 /*
 *include Crypto
@@ -97,32 +99,111 @@ namespace mavlink
 		status->parse_state = MAVLINK_PARSE_STATE_IDLE;
 	}
 
-	MAVLINK_HELPER void test()
+	MAVLINK_HELPER mavlink_device_certificate_t *mavlink_get_device_certificate()
 	{
-		unsigned char secretKey[32], publicKey[32], sharedKey[32];
+		static mavlink_device_certificate_t mavlink_device_certificate;
+		return &mavlink_device_certificate;
+	}
 
-		printf("A: Generazione coppia di chiavi\n");
-		CompressedKeyGeneration(secretKey, publicKey);
+	MAVLINK_HELPER uint8_t mavlink_read_certificate(const char *path_to_certificate)
+	{
+		FILE *fptr;
+		fptr = fopen(path_to_certificate, "rb");
 
-		hex_print((uint8_t *)secretKey, 0, 32);
-		hex_print((uint8_t *)publicKey, 0, 32);
+		if (fptr == NULL)
+		{
+			return 1;
+		}
+		else
+		{
+			mavlink_device_certificate_t *certificate = mavlink_get_device_certificate();
+			int result = fread(certificate, sizeof(mavlink_device_certificate_t), 1, fptr);
+			if (result <= 0)
+			{
+				return 1;
+			}
+			return 0;
+		}
+	}
 
-		unsigned char secretKey2[32], publicKey2[32], sharedKey2[32];
+	/*
+		Check if certificate is valid
+		date and sign
+	*/
+	MAVLINK_HELPER unsigned int mavlink_check_remote_certificate(float start, float end, uint8_t *remote_certificate, const unsigned char *sign)
+	{
+		time_t now;
+		unsigned int valid = false;
 
-		printf("B: Generazione coppia di chiavi\n");
+		time(&now);
 
-		CompressedKeyGeneration(secretKey2, publicKey2);
+		if ((int)start <= (int)now && (int)now <= (int)end)
+		{
 
-		hex_print((uint8_t *)secretKey2, 0, 32);
-		hex_print((uint8_t *)publicKey2, 0, 32);
+			mavlink_device_certificate_t *certificate = mavlink_get_device_certificate();
+			SchnorrQ_Verify(certificate->info.public_key_auth, remote_certificate, sizeof(info_t), sign, &valid);
+		}
+		return valid;
+	}
 
-		printf("B: Shared key\n");
-		CompressedSecretAgreement(secretKey2, publicKey, sharedKey2);
-		hex_print((uint8_t *)sharedKey2, 0, 32);
+	MAVLINK_HELPER key_status_t *mavlink_get_remote_key(int id)
+	{
+		#ifdef MAVLINK_EXTERNAL_KEYS_STORAGE
+		// No m_mavlink_status array defined in function,
+		// has to be defined externally
+#else
 
-		printf("A: Shared key\n");
-		CompressedSecretAgreement(secretKey, publicKey2, sharedKey);
-		hex_print((uint8_t *)sharedKey, 0, 32);
+			static key_status_t remote_keys[256];
+#endif
+
+
+	return &remote_keys[id];
+	}
+
+	MAVLINK_HELPER void mavlink_set_remote_key(int id, uint8_t *public_key)
+	{
+		key_status_t *remote_key = mavlink_get_remote_key(id);
+		static uint8_t shared_key[32];
+		mavlink_device_certificate_t *device_certificate = mavlink_get_device_certificate();
+		tiger_ctx tiger;
+
+		CompressedSecretAgreement(device_certificate->secret_key, public_key, shared_key);
+
+		rhash_tiger_init(&tiger);
+		rhash_tiger_update(&tiger, (uint8_t *)shared_key, sizeof(shared_key));
+		rhash_tiger_final(&tiger, remote_key->shared_key);
+
+		remote_key->status = MAVLINK_KEY_EXCHANGE_COMPLETE;
+	}
+
+	MAVLINK_HELPER uint8_t *mavlink_compute_iv(int id)
+	{
+		key_status_t *remote_key = mavlink_get_remote_key(id);
+		RandomBytesFunction(remote_key->iv, 16);
+		remote_key->iv_set = MAVLINK_IV_COMPLETE;
+		return remote_key->iv;
+	}
+
+	MAVLINK_HELPER void mavlink_set_iv(int id, uint8_t *ivc)
+	{
+		key_status_t *remote_key = mavlink_get_remote_key(id);
+		if (remote_key->iv_set == MAVLINK_IV_EMPTY)
+		{
+			memcpy(remote_key->iv, ivc, member_size(key_status_t, iv));
+			remote_key->iv_set = MAVLINK_IV_COMPLETE;
+		}
+	}
+
+	MAVLINK_HELPER bool mavlink_is_set_iv(int id)
+	{
+		key_status_t *key = mavlink_get_remote_key(id);
+		return key->iv_set;
+	}
+
+	MAVLINK_HELPER bool mavlink_is_set_remote_key(int id)
+	{
+		key_status_t *key = mavlink_get_remote_key(id);
+		return key->status;
 	}
 
 	/**
@@ -334,8 +415,9 @@ namespace mavlink
 			buf[8] = (msg->msgid >> 8) & 0xFF;
 			buf[9] = (msg->msgid >> 16) & 0xFF;
 		}
+
 #ifdef ENCRYPTION
-		if (msg->msgid != 0)
+		if (msg->msgid != 0 && msg->msgid != 10000 && msg->msgid != 10010)
 		{
 #ifdef CHACHA20
 			uint8_t key[] = {
@@ -448,11 +530,10 @@ namespace mavlink
 #endif
 
 #ifdef SPECK128192
-			uint8_t k[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f};
-			uint8_t nonce[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f};
-
-			Speck128192(nonce, k, (uint8_t *)_MAV_PAYLOAD_NON_CONST(msg), msg->len);
+            key_status_t *remote_key = mavlink_get_remote_key(0); //how get the right key?
+			Speck128192(remote_key->iv, remote_key->shared_key, (uint8_t *)_MAV_PAYLOAD_NON_CONST(msg), msg->len);
 #endif
+
 
 #ifdef SPECK128256
 			uint8_t k[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f};
@@ -560,8 +641,9 @@ namespace mavlink
 			buf[8] = (msgid >> 8) & 0xFF;
 			buf[9] = (msgid >> 16) & 0xFF;
 		}
+
 #ifdef ENCRYPTION
-		if (msgid != 0)
+		if (msgid != 0 && msgid != 10000 && msgid != 10010)
 		{
 #ifdef CHACHA20
 			//set key
@@ -675,12 +757,8 @@ namespace mavlink
 #endif
 
 #ifdef SPECK128192
-			uint8_t k[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f};
-			uint8_t nonce[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f};
-
-			Speck128192(nonce, k, (uint8_t *)packet, length);
-			test();
-
+			key_status_t *remote_key = mavlink_get_remote_key(0); //how get the right key?
+			Speck128192(remote_key->iv, remote_key->shared_key, (uint8_t *)packet, length);
 #endif
 
 #ifdef SPECK128256
@@ -1165,7 +1243,7 @@ namespace mavlink
 				}
 
 #ifdef ENCRYPTION
-				if (rxmsg->msgid != 0)
+				if (rxmsg->msgid != 0 && rxmsg->msgid != 10000 && rxmsg->msgid != 10010)
 				{
 #ifdef CHACHA20
 					uint8_t key[] = {
@@ -1179,26 +1257,11 @@ namespace mavlink
 						0x1c, 0x1d, 0x1e, 0x1f};
 					uint8_t nonce[] = {
 						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4a, 0x00, 0x00, 0x00, 0x00};
-					/**
-				 * false positives maybe
-				 * 
-				 * Error on message 119, 120, 122, 124 (INVALID DATA TYPE USED AS PARAMETER VALUE on QgroundControl)
-				 * 
-				 * MAVLINK_MSG_ID_LOG_REQUEST_DATA 119
-				 * MAVLINK_MSG_ID_LOG_DATA 120
-				 * MAVLINK_MSG_ID_LOG_REQUEST_END 122
-				 * MAVLINK_MSG_ID_GPS2_RAW 124
-				 *
-				 **/
-					uint8_t decrypt[rxmsg->len];
-					//printf("Length: %d\tpayload: %s\n", rxmsg->len, _MAV_PAYLOAD(rxmsg));
-					//printf("Encrypt:\n");
 
-					//hex_print((uint8_t *)_MAV_PAYLOAD(rxmsg), 0, rxmsg->len);
-					ChaCha20XOR(key, 1, nonce, (uint8_t *)_MAV_PAYLOAD(rxmsg), (uint8_t *)decrypt, rxmsg->len);
+					uint8_t decrypt[rxmsg->len];
+ 
+ 					ChaCha20XOR(key, 1, nonce, (uint8_t *)_MAV_PAYLOAD(rxmsg), (uint8_t *)decrypt, rxmsg->len);
 					memcpy((uint8_t *)_MAV_PAYLOAD_NON_CONST(rxmsg), decrypt, sizeof(decrypt));
-					//printf("Decrypt: %d\n", decrypt);
-					//hex_print((uint8_t *)decrypt, 0, rxmsg->len);
 #endif
 
 #ifdef TRIVIUM
@@ -1226,17 +1289,6 @@ namespace mavlink
 						0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
 
 					uint8_t decrypt[rxmsg->len];
-
-					/**
-				* false positives maybe
-				* 
-				* Error on message 71, 74, 76 (INVALID DATA TYPE USED AS PARAMETER VALUE on QgroundControl)
-				* 
-				* NOT EXIST     		   71
-				* MAVLINK_MSG_ID_VFR_HUD   74
-				* MAVLINK_MSG_ID COMMAND_LONG 76
-				*
-				**/
 					//decrypt payload
 					rabbit((uint8_t *)iv, (uint8_t *)key, (uint8_t *)_MAV_PAYLOAD(rxmsg), decrypt, rxmsg->len);
 					//copy encrypted payload in msg
@@ -1299,10 +1351,9 @@ namespace mavlink
 #endif
 
 #ifdef SPECK128192
-					uint8_t k[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f};
-					uint8_t nonce[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f};
-
-					Speck128192(nonce, k, (uint8_t *)_MAV_PAYLOAD_NON_CONST(rxmsg), rxmsg->len);
+					key_status_t *remote_key = mavlink_get_remote_key(0);
+					Speck128192(remote_key->iv, remote_key->shared_key, (uint8_t *)_MAV_PAYLOAD_NON_CONST(rxmsg), rxmsg->len);
+			
 #endif
 
 #ifdef SPECK128256

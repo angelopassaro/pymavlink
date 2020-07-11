@@ -67,7 +67,9 @@ MAVLINK_HELPER void store_bigendian(unsigned char *x, uint64 u)
     M512(w7, w5, w0, w8)   \
     M512(w8, w6, w1, w9)   \
     M512(w9, w7, w2, w10)  \
-    M512(w10, w8, w3, w11) M512(w11, w9, w4, w12) M512(w12, w10, w5, w13) M512(w13, w11, w6, w14) M512(w14, w12, w7, w15) M512(w15, w13, w8, w0)
+    M512(w10, w8, w3, w11) \
+    M512(w11, w9, w4, w12) \
+    M512(w12, w10, w5, w13) M512(w13, w11, w6, w14) M512(w14, w12, w7, w15) M512(w15, w13, w8, w0)
 #define F512(w, k)                                  \
     T1 = h + Sigma1512(e) + Ch512(e, f, g) + k + w; \
     T2 = Sigma0512(a) + Maj512(a, b, c);            \
@@ -419,7 +421,7 @@ MAVLINK_HELPER int crypto_sha512(const unsigned char *in, unsigned long long inl
 
     unsigned char padded[256];
 
-    int i;
+    unsigned long long i;
 
     unsigned long long bytes = inlen;
 
