@@ -323,7 +323,6 @@ namespace mavlink
         char subject[20];
         char issuer[20];
         uint8_t public_key[32];
-        uint8_t public_key_auth[32];
         float start_time;
         float end_time;
     } info_t;
@@ -331,6 +330,7 @@ namespace mavlink
     typedef struct mavlink_device_certificate
     {
         info_t info;
+        uint8_t public_key_auth[32];
         uint8_t secret_key[32];
         uint8_t sign[64];
     } mavlink_device_certificate_t;

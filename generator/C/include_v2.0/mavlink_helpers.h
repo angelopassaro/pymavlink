@@ -44,6 +44,8 @@
 
 #include "mavlink_sha256.h"
 
+static int readed_cert = 0;
+
 #ifdef MAVLINK_USE_CXX_NAMESPACE
 namespace mavlink
 {
@@ -107,23 +109,27 @@ namespace mavlink
 
 	MAVLINK_HELPER uint8_t mavlink_read_certificate(const char *path_to_certificate)
 	{
-		FILE *fptr;
-		fptr = fopen(path_to_certificate, "rb");
+		if (!readed_cert)
+		{
+			FILE *fptr;
+			fptr = fopen(path_to_certificate, "rb");
 
-		if (fptr == NULL)
-		{
-			return 1;
-		}
-		else
-		{
-			mavlink_device_certificate_t *certificate = mavlink_get_device_certificate();
-			int result = fread(certificate, sizeof(mavlink_device_certificate_t), 1, fptr);
-			if (result <= 0)
+			if (fptr == NULL)
 			{
-				return 1;
+				return 0;
 			}
-			return 0;
+			else
+			{
+				mavlink_device_certificate_t *certificate = mavlink_get_device_certificate();
+				readed_cert = 1;
+				int result = fread(certificate, sizeof(mavlink_device_certificate_t), 1, fptr);
+				if (result <= 0)
+				{
+					return 0;
+				}
+			}
 		}
+		return 1;
 	}
 
 	/*
@@ -141,23 +147,22 @@ namespace mavlink
 		{
 
 			mavlink_device_certificate_t *certificate = mavlink_get_device_certificate();
-			SchnorrQ_Verify(certificate->info.public_key_auth, remote_certificate, sizeof(info_t), sign, &valid);
+			SchnorrQ_Verify(certificate->public_key_auth, remote_certificate, sizeof(info_t), sign, &valid);
 		}
 		return valid;
 	}
 
 	MAVLINK_HELPER key_status_t *mavlink_get_remote_key(int id)
 	{
-		#ifdef MAVLINK_EXTERNAL_KEYS_STORAGE
+#ifdef MAVLINK_EXTERNAL_KEYS_STORAGE
 		// No m_mavlink_status array defined in function,
 		// has to be defined externally
 #else
 
-			static key_status_t remote_keys[256];
+	static key_status_t remote_keys[256];
 #endif
 
-
-	return &remote_keys[id];
+		return &remote_keys[id];
 	}
 
 	MAVLINK_HELPER void mavlink_set_remote_key(int id, uint8_t *public_key)
@@ -530,10 +535,9 @@ namespace mavlink
 #endif
 
 #ifdef SPECK128192
-            key_status_t *remote_key = mavlink_get_remote_key(0); //how get the right key?
+			key_status_t *remote_key = mavlink_get_remote_key(0); //how get the right key?
 			Speck128192(remote_key->iv, remote_key->shared_key, (uint8_t *)_MAV_PAYLOAD_NON_CONST(msg), msg->len);
 #endif
-
 
 #ifdef SPECK128256
 			uint8_t k[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f};
@@ -1259,8 +1263,8 @@ namespace mavlink
 						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4a, 0x00, 0x00, 0x00, 0x00};
 
 					uint8_t decrypt[rxmsg->len];
- 
- 					ChaCha20XOR(key, 1, nonce, (uint8_t *)_MAV_PAYLOAD(rxmsg), (uint8_t *)decrypt, rxmsg->len);
+
+					ChaCha20XOR(key, 1, nonce, (uint8_t *)_MAV_PAYLOAD(rxmsg), (uint8_t *)decrypt, rxmsg->len);
 					memcpy((uint8_t *)_MAV_PAYLOAD_NON_CONST(rxmsg), decrypt, sizeof(decrypt));
 #endif
 
@@ -1353,7 +1357,7 @@ namespace mavlink
 #ifdef SPECK128192
 					key_status_t *remote_key = mavlink_get_remote_key(0);
 					Speck128192(remote_key->iv, remote_key->shared_key, (uint8_t *)_MAV_PAYLOAD_NON_CONST(rxmsg), rxmsg->len);
-			
+
 #endif
 
 #ifdef SPECK128256
